@@ -65,37 +65,226 @@
 </main>
 <footer><div class="wrap">© <span id="year"></span> DREAMY MUSIC CLUB • Made with ♪ and friendship</div></footer>
 <script>
-const defaults={
-  groupUrl:"https://www.facebook.com/",
-  members:[{name:"Club Admin",role:"Administrator"},{name:"Dreamer Member",role:"Music Lover"},{name:"New Member",role:"Community Member"}],
-  notices:[{title:"DREAMY MUSIC CLUB-এ স্বাগতম",body:"আমাদের কমিউনিটিতে সবাইকে আন্তরিক শুভেচ্ছা। একে অপরের প্রতি সম্মান বজায় রাখুন।",date:"সর্বশেষ আপডেট"}],
-  gallery:[{title:"আমাদের মিউজিক কর্নার",url:"",kind:"music"},{title:"ভিডিও গ্যালারি",url:"",kind:"video"}]
+  let data = {
+  groupUrl: "",
+  members: [],
+  notices: [],
+  gallery: []
 };
-let data;
-try{data=JSON.parse(localStorage.getItem("dmc_site_data"))||structuredClone(defaults)}catch(e){data=JSON.parse(JSON.stringify(defaults))}
-const $=id=>document.getElementById(id);
-function save(){localStorage.setItem("dmc_site_data",JSON.stringify(data));render();$("status").textContent="পরিবর্তন এই ব্রাউজারে সেভ হয়েছে।"}
-function esc(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
-function render(){
-  $("memberList").innerHTML=data.members.map(m=>`<article class="card"><div class="member-avatar">${esc((m.name||"?").trim().charAt(0).toUpperCase())}</div><b>${esc(m.name)}</b><div class="muted">${esc(m.role)}</div></article>`).join("");
-  $("noticeList").innerHTML=data.notices.length?data.notices.map(n=>`<div class="notice"><b>${esc(n.title)}</b><div>${esc(n.body)}</div><small class="muted">${esc(n.date||"")}</small></div>`).join(""):"<p class='muted'>এখনো কোনো নোটিশ নেই।</p>";
-  $("galleryList").innerHTML=data.gallery.map(g=>{let link=safeUrl(g.url);return `<article class="card"><div class="media">${link?`<a href="${link}" target="_blank" rel="noopener">▶</a>`:"♫"}</div><b>${esc(g.title)}</b><div class="muted">${link?"লিংক খুলতে প্লে আইকনে চাপ দিন":"গ্যালারি আইটেম"}</div></article>`}).join("");
-  const group=safeUrl(data.groupUrl)||"https://www.facebook.com/";$("heroJoin").href=group;$("joinButton").href=group;
-  $("groupUrlInput").value=data.groupUrl||"";
-  $("manageList").innerHTML=
-    data.members.map((m,i)=>`<div class="item-row">সদস্য: ${esc(m.name)} <button class="btn small danger" onclick="removeItem('members',${i})">মুছুন</button></div>`).join("")+
-    data.notices.map((n,i)=>`<div class="item-row">নোটিশ: ${esc(n.title)} <button class="btn small danger" onclick="removeItem('notices',${i})">মুছুন</button></div>`).join("")+
-    data.gallery.map((g,i)=>`<div class="item-row">গ্যালারি: ${esc(g.title)} <button class="btn small danger" onclick="removeItem('gallery',${i})">মুছুন</button></div>`).join("");
+
+const $ = id => document.getElementById(id);
+let adminLoggedIn = false;
+
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, c => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;",
+    '"': "&quot;", "'": "&#39;"
+  }[c]));
 }
-function safeUrl(value){try{const u=new URL(value);return ["https:","http:"].includes(u.protocol)?u.href:""}catch(e){return ""}}
-window.removeItem=(type,index)=>{if(confirm("এই আইটেমটি মুছতে চাও?")){data[type].splice(index,1);save()}};
-$("year").textContent=new Date().getFullYear();$("adminToggle").onclick=()=>{$("adminPanel").classList.toggle("open");$("adminToggle").textContent=$("adminPanel").classList.contains("open")?"Admin Panel বন্ধ করুন":"Admin Panel খুলুন"};
-$("saveLink").onclick=()=>{const url=safeUrl($("groupUrlInput").value.trim());if(!url){alert("সঠিক Facebook Group URL দাও।");return}data.groupUrl=url;save()};
-$("addMember").onclick=()=>{const name=$("memberName").value.trim(),role=$("memberRole").value.trim();if(!name){alert("সদস্যের নাম লিখুন।");return}data.members.push({name,role:role||"Member"});$("memberName").value="";$("memberRole").value="";save()};
-$("addNotice").onclick=()=>{const title=$("noticeTitle").value.trim(),body=$("noticeBody").value.trim();if(!title||!body){alert("শিরোনাম ও বিস্তারিত লিখুন।");return}data.notices.unshift({title,body,date:new Date().toLocaleDateString("bn-BD")});$("noticeTitle").value="";$("noticeBody").value="";save()};
-$("addMedia").onclick=()=>{const title=$("mediaTitle").value.trim(),url=$("mediaUrl").value.trim();if(!title){alert("শিরোনাম লিখুন।");return}if(url&&!safeUrl(url)){alert("সঠিক http বা https URL দাও।");return}data.gallery.push({title,url,kind:"link"});$("mediaTitle").value="";$("mediaUrl").value="";save()};
-$("resetData").onclick=()=>{if(confirm("সব ডেমো পরিবর্তন মুছে ডিফল্ট তথ্য ফিরিয়ে আনবে?")){data=JSON.parse(JSON.stringify(defaults));save()}};
-render();
+
+function safeUrl(value) {
+  try {
+    const u = new URL(value);
+    return ["https:", "http:"].includes(u.protocol) ? u.href : "";
+  } catch {
+    return "";
+  }
+}
+
+function status(message) {
+  $("status").textContent = message;
+}
+
+async function api(action, type, item, id) {
+  const res = await fetch("/api/data", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action, type, item, id })
+  });
+  const result = await res.json();
+  if (!res.ok || !result.ok) throw new Error(result.message || "সমস্যা হয়েছে।");
+  return result;
+}
+
+async function loadData() {
+  try {
+    const res = await fetch("/api/data");
+    const result = await res.json();
+    if (!result.ok) throw new Error("ডেটা লোড হয়নি।");
+    data = result;
+    render();
+  } catch (e) {
+    status(e.message);
+  }
+}
+
+function render() {
+  $("memberList").innerHTML = data.members.map(m =>
+    `<article class="card">
+      <div class="member-avatar">${esc((m.name || "?").charAt(0))}</div>
+      <b>${esc(m.name)}</b>
+      <div class="muted">${esc(m.role)}</div>
+    </article>`
+  ).join("");
+
+  $("noticeList").innerHTML = data.notices.length
+    ? data.notices.map(n =>
+      `<div class="notice">
+        <b>${esc(n.title)}</b>
+        <div>${esc(n.body)}</div>
+        <small class="muted">${esc(n.date)}</small>
+      </div>`
+    ).join("")
+    : "<p class='muted'>এখনো কোনো নোটিশ নেই।</p>";
+
+  $("galleryList").innerHTML = data.gallery.map(g => {
+    const link = safeUrl(g.url);
+    return `<article class="card">
+      <div class="media">${link
+        ? `<a href="${link}" target="_blank" rel="noopener">▶</a>`
+        : "♫"}</div>
+      <b>${esc(g.title)}</b>
+    </article>`;
+  }).join("");
+
+  const group = safeUrl(data.groupUrl) || "#";
+  $("heroJoin").href = group;
+  $("joinButton").href = group;
+  $("groupUrlInput").value = data.groupUrl || "";
+
+  $("manageList").innerHTML =
+    data.members.map(m =>
+      `<div class="item-row">সদস্য: ${esc(m.name)}
+      <button class="btn small danger" onclick="removeItem('members','${esc(m.id)}')">মুছুন</button></div>`
+    ).join("") +
+    data.notices.map(n =>
+      `<div class="item-row">নোটিশ: ${esc(n.title)}
+      <button class="btn small danger" onclick="removeItem('notices','${esc(n.id)}')">মুছুন</button></div>`
+    ).join("") +
+    data.gallery.map(g =>
+      `<div class="item-row">গ্যালারি: ${esc(g.title)}
+      <button class="btn small danger" onclick="removeItem('gallery','${esc(g.id)}')">মুছুন</button></div>`
+    ).join("");
+}
+
+window.removeItem = async (type, id) => {
+  if (!confirm("এই আইটেমটি মুছতে চাও?")) return;
+  try {
+    await api("delete", type, null, id);
+    await loadData();
+    status("সফলভাবে মুছে ফেলা হয়েছে।");
+  } catch (e) {
+    status(e.message);
+  }
+};
+
+$("year").textContent = new Date().getFullYear();
+
+$("adminToggle").onclick = async () => {
+  if (!adminLoggedIn) {
+    const username = prompt("Admin Username দিন:");
+    if (!username) return;
+    const password = prompt("Admin Password দিন:");
+    if (!password) return;
+
+    try {
+      const res = await fetch("/api/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password })
+      });
+      const result = await res.json();
+      if (!res.ok || !result.ok) throw new Error(result.message);
+      adminLoggedIn = true;
+      status("Admin Login সফল হয়েছে।");
+    } catch (e) {
+      alert(e.message || "Login করা যায়নি।");
+      return;
+    }
+  }
+
+  $("adminPanel").classList.toggle("open");
+  $("adminToggle").textContent =
+    $("adminPanel").classList.contains("open")
+      ? "Admin Panel বন্ধ করুন"
+      : "Admin Panel খুলুন";
+};
+
+$("saveLink").onclick = async () => {
+  const url = safeUrl($("groupUrlInput").value.trim());
+  if (!url) return alert("সঠিক Facebook Group URL দিন।");
+  try {
+    await api("setGroupUrl", null, { url });
+    await loadData();
+    status("গ্রুপ লিংক সেভ হয়েছে।");
+  } catch (e) {
+    status(e.message);
+  }
+};
+
+$("addMember").onclick = async () => {
+  const name = $("memberName").value.trim();
+  const role = $("memberRole").value.trim() || "Member";
+  if (!name) return alert("সদস্যের নাম লিখুন।");
+  try {
+    await api("add", "members", { name, role });
+    $("memberName").value = "";
+    $("memberRole").value = "";
+    await loadData();
+    status("সদস্য যোগ হয়েছে।");
+  } catch (e) {
+    status(e.message);
+  }
+};
+
+$("addNotice").onclick = async () => {
+  const title = $("noticeTitle").value.trim();
+  const body = $("noticeBody").value.trim();
+  if (!title || !body) return alert("শিরোনাম ও বিস্তারিত লিখুন।");
+  try {
+    await api("add", "notices", {
+      title, body,
+      date: new Date().toLocaleDateString("bn-BD")
+    });
+    $("noticeTitle").value = "";
+    $("noticeBody").value = "";
+    await loadData();
+    status("নোটিশ প্রকাশ হয়েছে।");
+  } catch (e) {
+    status(e.message);
+  }
+};
+
+$("addMedia").onclick = async () => {
+  const title = $("mediaTitle").value.trim();
+  const url = $("mediaUrl").value.trim();
+  if (!title) return alert("শিরোনাম লিখুন।");
+  if (url && !safeUrl(url)) return alert("সঠিক URL দিন।");
+  try {
+    await api("add", "gallery", { title, url });
+    $("mediaTitle").value = "";
+    $("mediaUrl").value = "";
+    await loadData();
+    status("গ্যালারিতে যোগ হয়েছে।");
+  } catch (e) {
+    status(e.message);
+  }
+};
+
+$("resetData").onclick = async () => {
+  if (!confirm("Admin থেকে Logout করতে চান?")) return;
+  try {
+    await fetch("/api/logout", { method: "POST" });
+    adminLoggedIn = false;
+    $("adminPanel").classList.remove("open");
+    $("adminToggle").textContent = "Admin Panel খুলুন";
+    status("Logout সফল হয়েছে।");
+  } catch {
+    status("Logout করা যায়নি।");
+  }
+};
+
+loadData();
 </script>
 </body>
 </html>
