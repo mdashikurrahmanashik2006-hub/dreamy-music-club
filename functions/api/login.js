@@ -134,6 +134,10 @@ export async function onRequestPost({ request, env }) {
     );
 } catch (error) {
   console.error("LOGIN API ERROR:", error);
-  return response({ ok: false, message: "সার্ভারে সমস্যা হয়েছে।" }, 500);
+  return response({
+    ok: false,
+    message: "সার্ভারে সমস্যা হয়েছে।",
+    debug: String(error?.message || error)
+  }, 500);
 }
-} 
+}
