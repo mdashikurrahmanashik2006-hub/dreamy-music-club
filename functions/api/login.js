@@ -132,8 +132,8 @@ export async function onRequestPost({ request, env }) {
         "Set-Cookie": `dmc_session=${token}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=86400`
       }
     );
-
-  } catch (error) {
-    return response({ ok: false, message: "সার্ভারে সমস্যা হয়েছে।" }, 500);
-  }
+} catch (error) {
+  console.error("LOGIN API ERROR:", error);
+  return response({ ok: false, message: "সার্ভারে সমস্যা হয়েছে।" }, 500);
 }
+ 
